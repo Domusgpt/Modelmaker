@@ -81,6 +81,41 @@ The build output will be in the `dist` folder.
 npm run preview
 ```
 
+## Deploy to GitHub Pages
+
+This project is configured for automatic deployment to GitHub Pages using GitHub Actions.
+
+### Setup Instructions
+
+1. **Enable GitHub Pages in your repository**:
+   - Go to your repository Settings → Pages
+   - Under "Build and deployment", select "GitHub Actions" as the source
+
+2. **Add your Gemini API key as a secret**:
+   - Go to Settings → Secrets and variables → Actions
+   - Click "New repository secret"
+   - Name: `GEMINI_API_KEY`
+   - Value: Your Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey)
+
+3. **Push to main branch**:
+   ```bash
+   git push origin main
+   ```
+
+4. **Access your deployed site**:
+   - Your app will be available at: `https://[your-username].github.io/Modelmaker/`
+   - The GitHub Action will automatically build and deploy on every push to main
+
+### Manual Deployment
+
+If you prefer to deploy manually:
+
+```bash
+npm run deploy
+```
+
+This will build the project. You can then upload the `dist` folder to any static hosting service.
+
 ## Project Structure
 
 ```
