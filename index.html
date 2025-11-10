@@ -4,30 +4,59 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Grateful Modeling Machine</title>
+    <title>AI Model Studio - Professional Product Photography</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Knewave&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <style type="text/tailwindcss">
       @layer base {
         body {
-          font-family: 'Roboto', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        * {
+          @apply transition-all duration-300 ease-in-out;
         }
       }
       @layer utilities {
-        .font-knewave {
-          font-family: 'Knewave', cursive;
+        .gradient-border {
+          position: relative;
+          background: white;
+          background-clip: padding-box;
+          border: 2px solid transparent;
         }
-        .grateful-text {
-          color: #f7b538; /* gold */
-          -webkit-text-stroke: 1.5px #1e5ca6;
-          text-shadow: 3px 3px 0 #c83232;
+        .gradient-border::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          z-index: -1;
+          margin: -2px;
+          border-radius: inherit;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        .grateful-text-sm {
-           color: #f7b538;
-          -webkit-text-stroke: 1px #1e5ca6;
-          text-shadow: 2px 2px 0 #c83232;
+        .morph-card {
+          @apply transform transition-all duration-500 ease-out;
+        }
+        .morph-card.active {
+          @apply scale-100 opacity-100;
+        }
+        .morph-card.inactive {
+          @apply scale-95 opacity-50 pointer-events-none;
+        }
+        .btn-primary {
+          @apply bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200;
+        }
+        .btn-secondary {
+          @apply bg-white hover:bg-gray-50 text-gray-700 font-semibold py-3 px-8 rounded-xl shadow-md hover:shadow-lg border border-gray-200 transition-all duration-200;
+        }
+        .step-indicator {
+          @apply flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-500 font-semibold text-sm transition-all duration-300;
+        }
+        .step-indicator.active {
+          @apply bg-gradient-to-r from-indigo-600 to-purple-600 text-white scale-110;
+        }
+        .step-indicator.completed {
+          @apply bg-green-500 text-white;
         }
       }
     </style>
@@ -42,7 +71,7 @@
 }
 </script>
 </head>
-  <body class="bg-[#201124] text-[#f0e6d2]">
+  <body class="bg-gradient-to-br from-gray-50 to-gray-100 text-gray-900 min-h-screen">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
