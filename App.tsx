@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { GeneratedImageViewer } from './components/GeneratedImageViewer';
+import { CreditsDisplay } from './components/CreditsDisplay';
+import { PricingModal } from './components/PricingModal';
+import { HistoryPanel } from './components/HistoryPanel';
+import { StylePresets, STYLE_PRESETS } from './components/StylePresets';
 import { generateFashionModelImage } from './services/geminiService';
+import {
+  initializeCredits,
+  getCredits,
+  useCredit,
+  saveGeneration,
+  getHistory,
+  needsToPurchase,
+} from './services/creditsService';
 import type { UploadedImage } from './types';
 
 type Step = 1 | 2 | 3 | 4;
@@ -9,10 +21,31 @@ type Step = 1 | 2 | 3 | 4;
 const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
-  const [prompt, setPrompt] = useState<string>('A professional model in a modern studio setting, wearing the provided clothing in natural lighting with a clean white background.');
+  const [prompt, setPrompt] = useState<string>(STYLE_PRESETS[0].prompt); // Default to Studio Pro
+  const [selectedPreset, setSelectedPreset] = useState<string>('studio');
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Credits and monetization
+  const [credits, setCredits] = useState<number>(0);
+  const [showPricingModal, setShowPricingModal] = useState<boolean>(false);
+  const [showHistoryPanel, setShowHistoryPanel] = useState<boolean>(false);
+  const [showWelcome, setShowWelcome] = useState<boolean>(false);
+
+  // Initialize credits on mount
+  useEffect(() => {
+    initializeCredits();
+    const currentCredits = getCredits();
+    setCredits(currentCredits);
+
+    // Show welcome message for first-time users
+    const hasSeenWelcome = localStorage.getItem('aiModelStudio_welcomeSeen');
+    if (!hasSeenWelcome && currentCredits === 1) {
+      setShowWelcome(true);
+      localStorage.setItem('aiModelStudio_welcomeSeen', 'true');
+    }
+  }, []);
 
   // Auto-advance to step 2 when images are uploaded
   useEffect(() => {
@@ -33,19 +66,49 @@ const App: React.FC = () => {
       return;
     }
 
+    // Check if user has credits
+    if (needsToPurchase()) {
+      setShowPricingModal(true);
+      setError('You need credits to generate images. Choose a plan to continue!');
+      return;
+    }
+
     setCurrentStep(3);
     setIsLoading(true);
     setError(null);
     setGeneratedImage(null);
 
     try {
+      // Use a credit
+      const creditUsed = useCredit();
+      if (!creditUsed) {
+        throw new Error('Failed to use credit. Please try again.');
+      }
+
+      // Update credits display
+      setCredits(getCredits());
+
       const b64Image = await generateFashionModelImage(prompt, uploadedImages);
-      setGeneratedImage(`data:image/png;base64,${b64Image}`);
+      const imageUrl = `data:image/png;base64,${b64Image}`;
+      setGeneratedImage(imageUrl);
+
+      // Save to history
+      saveGeneration({
+        imageUrl,
+        prompt,
+        creditsUsed: 1,
+      });
+
       setCurrentStep(4);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred while generating your image.');
       console.error(err);
       setCurrentStep(2); // Return to editing step on error
+
+      // Refund the credit if generation failed
+      const { addCredits } = await import('./services/creditsService');
+      addCredits(1);
+      setCredits(getCredits());
     } finally {
       setIsLoading(false);
     }
@@ -55,6 +118,25 @@ const App: React.FC = () => {
     setGeneratedImage(null);
     setError(null);
     setCurrentStep(uploadedImages.length > 0 ? 2 : 1);
+  };
+
+  const handlePresetSelect = (presetId: string, presetPrompt: string) => {
+    setSelectedPreset(presetId);
+    if (presetId !== 'custom') {
+      setPrompt(presetPrompt);
+    }
+    // If custom, don't change the prompt - let user write their own
+  };
+
+  const handlePromptChange = (newPrompt: string) => {
+    setPrompt(newPrompt);
+    // If user manually edits, switch to custom preset
+    if (selectedPreset !== 'custom') {
+      const currentPreset = STYLE_PRESETS.find(p => p.id === selectedPreset);
+      if (currentPreset && newPrompt !== currentPreset.prompt) {
+        setSelectedPreset('custom');
+      }
+    }
   };
 
   const canGenerate = uploadedImages.length > 0 && prompt.trim().length > 0 && !isLoading;
@@ -73,10 +155,17 @@ const App: React.FC = () => {
                 Professional product photography in seconds
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <svg className="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowHistoryPanel(true)}
+                className="text-gray-600 hover:text-indigo-600 transition-colors flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-medium hidden sm:inline">History</span>
+              </button>
+              <CreditsDisplay credits={credits} onBuyMore={() => setShowPricingModal(true)} />
             </div>
           </div>
         </div>
@@ -195,24 +284,38 @@ const App: React.FC = () => {
                     <div className={`step-indicator ${currentStep === 2 ? 'active' : currentStep > 2 ? 'completed' : ''}`}>
                       {currentStep > 2 ? '✓' : '2'}
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900">Describe Your Scene</h2>
+                    <h2 className="text-xl font-bold text-gray-900">Choose Your Style</h2>
                   </div>
                   <p className="text-gray-600 mb-4 text-sm">
-                    Describe how you want your product displayed. Be specific about setting, lighting, and style.
+                    Pick a preset style or write your own custom description
                   </p>
-                  <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Example: A professional model in a modern studio with soft lighting and a white background..."
-                    disabled={uploadedImages.length === 0}
-                    className="w-full h-32 p-4 bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+
+                  {/* Style Presets */}
+                  <StylePresets
+                    selectedPreset={selectedPreset}
+                    onSelectPreset={handlePresetSelect}
                   />
+
+                  {/* Custom Prompt Textarea */}
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 mb-2 block">
+                      Scene Description {selectedPreset === 'custom' && <span className="text-indigo-600">(Custom)</span>}
+                    </label>
+                    <textarea
+                      value={prompt}
+                      onChange={(e) => handlePromptChange(e.target.value)}
+                      placeholder="Example: A professional model in a modern studio with soft lighting and a white background..."
+                      disabled={uploadedImages.length === 0}
+                      className="w-full h-32 p-4 bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
                   {prompt.trim().length > 0 && uploadedImages.length > 0 && (
                     <div className="mt-4 flex items-center gap-2 text-green-600 text-sm font-medium">
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      Scene description ready
+                      Ready to generate!
                     </div>
                   )}
                 </div>
@@ -315,6 +418,50 @@ const App: React.FC = () => {
           </p>
         </div>
       </footer>
+
+      {/* Welcome Modal */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to AI Model Studio!</h2>
+            <p className="text-gray-600 mb-6">
+              You've got <strong>1 free model generation</strong> to try it out. Upload your product, describe the scene, and see the magic happen!
+            </p>
+            <button
+              onClick={() => setShowWelcome(false)}
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+            >
+              Let's Get Started
+            </button>
+            <p className="text-xs text-gray-500 mt-4">
+              After your free generation, credits start at just $1 for 5 more
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Pricing Modal */}
+      <PricingModal
+        isOpen={showPricingModal}
+        onClose={() => setShowPricingModal(false)}
+        currentCredits={credits}
+      />
+
+      {/* History Panel */}
+      <HistoryPanel
+        isOpen={showHistoryPanel}
+        onClose={() => setShowHistoryPanel(false)}
+        history={getHistory()}
+        onSelectImage={(imageUrl) => {
+          setGeneratedImage(imageUrl);
+          setCurrentStep(4);
+        }}
+      />
     </div>
   );
 };
