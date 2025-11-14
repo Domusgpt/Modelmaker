@@ -1,317 +1,311 @@
-import React, { useState, useEffect } from 'react';
-import { ImageUploader } from './components/ImageUploader';
-import { GeneratedImageViewer } from './components/GeneratedImageViewer';
+import React, { useState } from 'react';
 import { generateFashionModelImage } from './services/geminiService';
 import type { UploadedImage } from './types';
 
-type Step = 1 | 2 | 3 | 4;
-
 const App: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<Step>(1);
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
-  const [prompt, setPrompt] = useState<string>('A professional model in a modern studio setting, wearing the provided clothing in natural lighting with a clean white background.');
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [generationCount, setGenerationCount] = useState<number>(0);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState<boolean>(false);
 
-  // Auto-advance to step 2 when images are uploaded
-  useEffect(() => {
-    if (uploadedImages.length > 0 && currentStep === 1) {
-      setCurrentStep(2);
-    } else if (uploadedImages.length === 0 && currentStep > 1 && !isLoading && !generatedImage) {
-      setCurrentStep(1);
-    }
-  }, [uploadedImages.length, currentStep, isLoading, generatedImage]);
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-  const handleGenerate = async () => {
-    if (uploadedImages.length === 0) {
-      setError('Please upload at least one product image.');
+    // Convert files to base64
+    const imagePromises = files.slice(0, 5).map(file => {
+      return new Promise<UploadedImage>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve({
+            file,
+            dataUrl: reader.result as string
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    const images = await Promise.all(imagePromises);
+    setUploadedImages(images);
+
+    // Auto-generate immediately with simple default prompt
+    generateImage(images);
+  };
+
+  const generateImage = async (images: UploadedImage[]) => {
+    // Check if user has exceeded free trials
+    if (generationCount >= 3) {
+      setShowSubscriptionModal(true);
       return;
     }
-    if (!prompt.trim()) {
-      setError('Please describe your desired scene.');
-      return;
-    }
 
-    setCurrentStep(3);
     setIsLoading(true);
     setError(null);
     setGeneratedImage(null);
 
     try {
-      const b64Image = await generateFashionModelImage(prompt, uploadedImages);
+      const simplePrompt = 'A professional model wearing this clothing in a modern, well-lit setting with clean background. Perfect for Facebook and Instagram posts.';
+      const b64Image = await generateFashionModelImage(simplePrompt, images);
       setGeneratedImage(`data:image/png;base64,${b64Image}`);
-      setCurrentStep(4);
+      setGenerationCount(prev => prev + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred while generating your image.');
+      setError('Oops! Something went wrong. Please try again.');
       console.error(err);
-      setCurrentStep(2); // Return to editing step on error
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleStartOver = () => {
-    setGeneratedImage(null);
-    setError(null);
-    setCurrentStep(uploadedImages.length > 0 ? 2 : 1);
+  const handleShareToFacebook = () => {
+    if (!generatedImage) return;
+
+    // Download first, then user can manually upload to Facebook
+    // (Direct Facebook posting requires backend + OAuth)
+    const link = document.createElement('a');
+    link.href = generatedImage;
+    link.download = `my-photo-${Date.now()}.png`;
+    link.click();
+
+    // Open Facebook in new tab
+    window.open('https://www.facebook.com/', '_blank');
+
+    alert('Photo downloaded! Upload it to your Facebook post in the new tab.');
   };
 
-  const canGenerate = uploadedImages.length > 0 && prompt.trim().length > 0 && !isLoading;
+  const handleTryAgain = () => {
+    setGeneratedImage(null);
+    setUploadedImages([]);
+    setError(null);
+  };
+
+  const remainingFree = Math.max(0, 3 - generationCount);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                AI Model Studio
-              </h1>
-              <p className="text-gray-600 text-sm mt-1">
-                Professional product photography in seconds
-              </p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Subscription Modal */}
+      {showSubscriptionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 text-center">
+            <div className="text-6xl mb-4">🎉</div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              You've Used All 3 FREE Photos!
+            </h2>
+            <p className="text-xl text-gray-600 mb-6">
+              Keep creating amazing photos for just:
+            </p>
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl p-6 mb-6">
+              <div className="text-5xl font-bold mb-2">$4.99</div>
+              <div className="text-2xl">per month</div>
+              <div className="text-lg opacity-90 mt-2">Unlimited photos!</div>
             </div>
-            <div className="flex items-center gap-2">
-              <svg className="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Progress Steps - Hidden when viewing results */}
-      {currentStep !== 4 && (
-        <div className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex items-center justify-center gap-4">
-              {/* Step 1 */}
-              <div className="flex items-center">
-                <div className={`step-indicator ${currentStep >= 1 ? 'completed' : ''}`}>
-                  {currentStep > 1 ? '✓' : '1'}
-                </div>
-                <span className={`ml-2 text-sm font-medium ${currentStep >= 1 ? 'text-gray-900' : 'text-gray-400'}`}>
-                  Upload Products
-                </span>
-              </div>
-
-              {/* Connector */}
-              <div className={`h-0.5 w-12 ${currentStep >= 2 ? 'bg-green-500' : 'bg-gray-300'}`} />
-
-              {/* Step 2 */}
-              <div className="flex items-center">
-                <div className={`step-indicator ${currentStep === 2 ? 'active' : currentStep > 2 ? 'completed' : ''}`}>
-                  {currentStep > 2 ? '✓' : '2'}
-                </div>
-                <span className={`ml-2 text-sm font-medium ${currentStep >= 2 ? 'text-gray-900' : 'text-gray-400'}`}>
-                  Describe Scene
-                </span>
-              </div>
-
-              {/* Connector */}
-              <div className={`h-0.5 w-12 ${currentStep >= 3 ? 'bg-green-500' : 'bg-gray-300'}`} />
-
-              {/* Step 3 */}
-              <div className="flex items-center">
-                <div className={`step-indicator ${currentStep === 3 ? 'active' : currentStep > 3 ? 'completed' : ''}`}>
-                  {currentStep > 3 ? '✓' : '3'}
-                </div>
-                <span className={`ml-2 text-sm font-medium ${currentStep >= 3 ? 'text-gray-900' : 'text-gray-400'}`}>
-                  Generate
-                </span>
-              </div>
-            </div>
+            <button
+              onClick={() => alert('Payment integration coming soon! This would connect to Stripe/PayPal.')}
+              className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white text-2xl font-bold py-5 px-8 rounded-2xl shadow-xl mb-4"
+            >
+              START MY SUBSCRIPTION
+            </button>
+            <button
+              onClick={() => setShowSubscriptionModal(false)}
+              className="text-gray-500 text-lg underline"
+            >
+              Maybe later
+            </button>
           </div>
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Results View (Step 4) */}
-        {currentStep === 4 && generatedImage && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900">Your Generated Image</h2>
-              <button
-                onClick={handleStartOver}
-                className="btn-secondary"
-              >
-                ← Create Another
-              </button>
+      {/* Header */}
+      <header className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xl">
+        <div className="max-w-6xl mx-auto px-6 py-8">
+          <div className="text-center">
+            <h1 className="text-4xl md:text-5xl font-bold mb-3">
+              📸 Make My Photo Perfect!
+            </h1>
+            <p className="text-xl md:text-2xl opacity-95">
+              Transform your product photos in seconds - perfect for Facebook!
+            </p>
+          </div>
+
+          {/* Free Trial Counter */}
+          {remainingFree > 0 && (
+            <div className="mt-6 bg-white bg-opacity-20 backdrop-blur-sm rounded-2xl p-4 text-center">
+              <p className="text-2xl font-bold">
+                🎁 {remainingFree} FREE {remainingFree === 1 ? 'Photo' : 'Photos'} Remaining!
+              </p>
+              <p className="text-lg opacity-90 mt-1">
+                Then just $4.99/month for unlimited photos
+              </p>
             </div>
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              <GeneratedImageViewer
-                isLoading={false}
-                imageUrl={generatedImage}
-                error={null}
+          )}
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-6 py-12">
+        {/* No image uploaded yet */}
+        {!generatedImage && !isLoading && uploadedImages.length === 0 && (
+          <div className="bg-white rounded-3xl shadow-2xl p-12 text-center">
+            <div className="text-7xl mb-6">👕</div>
+            <h2 className="text-4xl font-bold text-gray-900 mb-6">
+              Upload Your Product Photo
+            </h2>
+            <p className="text-2xl text-gray-600 mb-10">
+              We'll make it look professional automatically!
+            </p>
+
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                className="hidden"
               />
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-3xl font-bold py-8 px-16 rounded-2xl shadow-2xl inline-block transform hover:scale-105">
+                📁 CHOOSE PHOTO
+              </div>
+            </label>
+
+            <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+              <div className="bg-blue-50 rounded-2xl p-6">
+                <div className="text-4xl mb-3">1️⃣</div>
+                <h3 className="text-xl font-bold mb-2">Upload Photo</h3>
+                <p className="text-lg text-gray-600">Pick a photo from your phone or computer</p>
+              </div>
+              <div className="bg-blue-50 rounded-2xl p-6">
+                <div className="text-4xl mb-3">2️⃣</div>
+                <h3 className="text-xl font-bold mb-2">We Fix It</h3>
+                <p className="text-lg text-gray-600">Our AI makes it look amazing (takes 20 seconds)</p>
+              </div>
+              <div className="bg-blue-50 rounded-2xl p-6">
+                <div className="text-4xl mb-3">3️⃣</div>
+                <h3 className="text-xl font-bold mb-2">Share on Facebook!</h3>
+                <p className="text-lg text-gray-600">Post directly to Facebook or Instagram</p>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Editor View (Steps 1-3) */}
-        {currentStep !== 4 && (
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-            {/* Left Panel - Inputs */}
-            <div className="lg:col-span-3 space-y-6">
-              {/* Step 1: Upload Images */}
-              <div
-                className={`morph-card bg-white rounded-2xl shadow-lg overflow-hidden border-2 ${
-                  currentStep === 1 ? 'border-indigo-500 active' : uploadedImages.length > 0 ? 'border-green-500' : 'border-gray-200'
-                }`}
-              >
-                <div className="p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={`step-indicator ${uploadedImages.length > 0 ? 'completed' : currentStep === 1 ? 'active' : ''}`}>
-                      {uploadedImages.length > 0 ? '✓' : '1'}
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">Upload Product Images</h2>
-                  </div>
-                  <p className="text-gray-600 mb-4 text-sm">
-                    Upload 1-5 high-quality images of your product. Works best with clean, well-lit photos.
-                  </p>
-                  <ImageUploader onImagesUploaded={setUploadedImages} />
-                  {uploadedImages.length > 0 && (
-                    <div className="mt-4 flex items-center gap-2 text-green-600 text-sm font-medium">
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      {uploadedImages.length} {uploadedImages.length === 1 ? 'image' : 'images'} uploaded
-                    </div>
-                  )}
-                </div>
+        {/* Loading state */}
+        {isLoading && (
+          <div className="bg-white rounded-3xl shadow-2xl p-16 text-center">
+            <div className="animate-spin text-8xl mb-8">⚡</div>
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Making Your Photo Amazing...
+            </h2>
+            <p className="text-2xl text-gray-600">
+              This takes about 20 seconds
+            </p>
+            <div className="mt-8">
+              <div className="w-full bg-gray-200 rounded-full h-4">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 h-4 rounded-full animate-pulse" style={{width: '70%'}}></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error state */}
+        {error && (
+          <div className="bg-white rounded-3xl shadow-2xl p-12 text-center">
+            <div className="text-7xl mb-6">😕</div>
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Oops! Something Went Wrong
+            </h2>
+            <p className="text-2xl text-gray-600 mb-8">{error}</p>
+            <button
+              onClick={handleTryAgain}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-2xl font-bold py-6 px-12 rounded-2xl shadow-xl"
+            >
+              TRY AGAIN
+            </button>
+          </div>
+        )}
+
+        {/* Generated image result */}
+        {generatedImage && !isLoading && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl shadow-2xl p-8">
+              <div className="text-center mb-6">
+                <span className="inline-block bg-green-500 text-white text-2xl font-bold px-8 py-3 rounded-full">
+                  ✓ DONE!
+                </span>
               </div>
 
-              {/* Step 2: Describe Scene */}
-              <div
-                className={`morph-card bg-white rounded-2xl shadow-lg overflow-hidden border-2 transition-all duration-500 ${
-                  currentStep === 2 ? 'border-indigo-500 active' : currentStep > 2 ? 'border-green-500' : 'border-gray-200 inactive'
-                } ${uploadedImages.length === 0 ? 'opacity-50' : ''}`}
-              >
-                <div className="p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={`step-indicator ${currentStep === 2 ? 'active' : currentStep > 2 ? 'completed' : ''}`}>
-                      {currentStep > 2 ? '✓' : '2'}
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">Describe Your Scene</h2>
-                  </div>
-                  <p className="text-gray-600 mb-4 text-sm">
-                    Describe how you want your product displayed. Be specific about setting, lighting, and style.
-                  </p>
-                  <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Example: A professional model in a modern studio with soft lighting and a white background..."
-                    disabled={uploadedImages.length === 0}
-                    className="w-full h-32 p-4 bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                  {prompt.trim().length > 0 && uploadedImages.length > 0 && (
-                    <div className="mt-4 flex items-center gap-2 text-green-600 text-sm font-medium">
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      Scene description ready
-                    </div>
-                  )}
-                </div>
-              </div>
+              <img
+                src={generatedImage}
+                alt="Your professional photo"
+                className="w-full rounded-2xl shadow-lg mb-6"
+              />
 
-              {/* Generate Button */}
-              {currentStep === 2 && (
-                <div className="animate-fade-in">
-                  <button
-                    onClick={handleGenerate}
-                    disabled={!canGenerate}
-                    className={`w-full btn-primary text-lg py-4 ${!canGenerate ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <svg className="w-6 h-6 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Generate Professional Image
-                  </button>
-                </div>
-              )}
-
-              {/* Error Display */}
-              {error && (
-                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3">
-                  <svg className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              {/* Action Buttons */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button
+                  onClick={handleShareToFacebook}
+                  className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-2xl font-bold py-6 px-8 rounded-2xl shadow-xl flex items-center justify-center gap-3"
+                >
+                  <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                   </svg>
-                  <div>
-                    <h3 className="font-semibold text-red-900 mb-1">Error</h3>
-                    <p className="text-red-700 text-sm">{error}</p>
-                  </div>
-                </div>
-              )}
-            </div>
+                  SHARE ON FACEBOOK
+                </button>
 
-            {/* Right Panel - Preview */}
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-8">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Preview</h3>
-                <div className="aspect-square bg-gray-50 rounded-xl flex items-center justify-center border-2 border-gray-200">
-                  {currentStep === 3 && isLoading ? (
-                    <div className="text-center">
-                      <svg className="animate-spin h-12 w-12 text-indigo-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <p className="text-gray-600 font-medium">Generating your image...</p>
-                      <p className="text-gray-400 text-sm mt-2">This usually takes 10-30 seconds</p>
-                    </div>
-                  ) : uploadedImages.length > 0 ? (
-                    <div className="text-center p-6">
-                      <div className="grid grid-cols-2 gap-2 mb-4">
-                        {uploadedImages.slice(0, 4).map((img, idx) => (
-                          <img
-                            key={idx}
-                            src={img.dataUrl}
-                            alt={`Upload ${idx + 1}`}
-                            className="w-full h-20 object-cover rounded-lg border border-gray-200"
-                          />
-                        ))}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        <p className="font-medium mb-2">Your products are ready!</p>
-                        <p className="text-xs text-gray-500">
-                          {currentStep === 2 ? 'Complete the scene description and click Generate' : 'Awaiting scene description'}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center text-gray-400">
-                      <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <p className="text-sm">Upload your product images to get started</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Quick Tips */}
-                <div className="mt-6 p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                  <h4 className="text-sm font-semibold text-indigo-900 mb-2">💡 Pro Tips</h4>
-                  <ul className="text-xs text-indigo-700 space-y-1">
-                    <li>• Use high-resolution product images</li>
-                    <li>• Be specific in your scene description</li>
-                    <li>• Try different backgrounds and settings</li>
-                    <li>• Perfect for social media & ads</li>
-                  </ul>
-                </div>
+                <button
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = generatedImage;
+                    link.download = `my-photo-${Date.now()}.png`;
+                    link.click();
+                  }}
+                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white text-2xl font-bold py-6 px-8 rounded-2xl shadow-xl"
+                >
+                  💾 SAVE PHOTO
+                </button>
               </div>
+
+              <button
+                onClick={handleTryAgain}
+                className="w-full mt-4 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xl font-semibold py-5 px-8 rounded-2xl"
+              >
+                ← Make Another Photo
+              </button>
             </div>
+
+            {/* Upsell box */}
+            {remainingFree === 0 && (
+              <div className="bg-gradient-to-r from-yellow-400 to-orange-400 rounded-3xl shadow-2xl p-8 text-center">
+                <div className="text-6xl mb-4">🎉</div>
+                <h3 className="text-3xl font-bold text-gray-900 mb-3">
+                  Love It? Get Unlimited!
+                </h3>
+                <p className="text-xl text-gray-800 mb-6">
+                  Only <span className="font-bold text-2xl">$4.99/month</span> for unlimited professional photos
+                </p>
+                <button
+                  onClick={() => setShowSubscriptionModal(true)}
+                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white text-2xl font-bold py-5 px-12 rounded-2xl shadow-xl"
+                >
+                  GET UNLIMITED NOW!
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <p className="text-center text-gray-500 text-sm">
-            Powered by AI • Perfect for Facebook ads, Instagram posts, and print-on-demand products
+      {/* Social Proof Footer */}
+      <footer className="bg-white border-t-4 border-blue-600 mt-16 py-8">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <p className="text-2xl font-semibold text-gray-900 mb-2">
+            ⭐⭐⭐⭐⭐
+          </p>
+          <p className="text-xl text-gray-600 mb-1">
+            "So easy! My Facebook posts look professional now!"
+          </p>
+          <p className="text-lg text-gray-500">
+            Join 50,000+ happy users sharing amazing photos
           </p>
         </div>
       </footer>
